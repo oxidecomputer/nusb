@@ -95,6 +95,11 @@ impl DeviceInfo {
         {
             DeviceId(self.registry_id)
         }
+
+        #[cfg(target_os = "illumos")]
+        {
+            DeviceId(0x1de)
+        }
     }
 
     /// *(Linux-only)* Sysfs path for the device.
@@ -645,6 +650,11 @@ impl BusInfo {
         #[cfg(target_os = "macos")]
         {
             self.name.as_deref()
+        }
+
+        #[cfg(target_os = "illumos")]
+        {
+            Some("xxx")
         }
     }
 }

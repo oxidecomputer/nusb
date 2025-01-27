@@ -15,3 +15,11 @@ mod macos_iokit;
 
 #[cfg(target_os = "macos")]
 pub use macos_iokit::*;
+
+#[cfg(any(target_os = "illumos"))]
+mod illumos_ugen;
+
+#[cfg(any(target_os = "illumos"))]
+pub use illumos_ugen::*;
+
+

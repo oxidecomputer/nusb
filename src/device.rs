@@ -260,7 +260,7 @@ impl Device {
     ///   and use the interface handle to submit transfers.
     /// * On Linux, this takes a device-wide lock, so if you have multiple threads, you
     ///   are better off using the async methods.
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
+    #[cfg(not(target_os = "windows"))]
     pub fn control_in_blocking(
         &self,
         control: Control,
@@ -278,7 +278,7 @@ impl Device {
     ///   and use the interface handle to submit transfers.
     /// * On Linux, this takes a device-wide lock, so if you have multiple threads, you
     ///   are better off using the async methods.
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "android"))]
+    #[cfg(not(target_os = "windows"))]
     pub fn control_out_blocking(
         &self,
         control: Control,
