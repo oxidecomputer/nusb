@@ -1,5 +1,7 @@
-use crate::descriptors::{validate_device_descriptor, Configuration, DeviceDescriptor};
-use crate::{BusInfo, DeviceInfo, Error};
+use crate::descriptors::{
+    validate_config_descriptor, validate_device_descriptor, Configuration, DeviceDescriptor,
+};
+use crate::{BusInfo, DeviceInfo, Error, InterfaceInfo};
 use std::collections::HashMap;
 
 use anyhow::{anyhow, bail};
@@ -114,6 +116,32 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
             if let Some(_) = validate_device_descriptor(b) {
                 let d = DeviceDescriptor::new(b);
 
+                let interfaces = match props.get("usb-raw-cfg-descriptors") {
+                    Some(PropVal::Bytes(cfg)) => {
+                        #[rustfmt::skip]
+                        validate_config_descriptor(cfg).ok_or_else(||
+                            anyhow!("{path}: bad config {cfg:?}")
+                        )?;
+
+                        let c = Configuration::new(cfg);
+
+                        c.interfaces()
+                            .map(|i| {
+                                let alt = i.first_alt_setting();
+
+                                InterfaceInfo {
+                                    interface_number: i.interface_number(),
+                                    class: alt.class(),
+                                    subclass: alt.subclass(),
+                                    protocol: alt.protocol(),
+                                    interface_string: None,
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    }
+                    v => bail!("{path}: bad usb-raw-cfg-descriptors: {v:?}"),
+                };
+
                 devices.push(DeviceInfo {
                     bus_id: format!("{busnum:03}"),
                     device_address,
@@ -129,7 +157,7 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
                     manufacturer_string,
                     product_string,
                     serial_number,
-                    interfaces: vec![],
+                    interfaces,
                 });
             } else {
                 bail!("{path}: invalid device descriptor");
