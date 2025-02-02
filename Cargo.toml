@@ -36,6 +36,7 @@ io-kit-sys = "0.4.0"
 [target.'cfg(any(target_os="illumos"))'.dependencies]
 rustix = { version = "0.38.17", features = ["fs", "event", "net"] }
 devinfo = "0.1.0"
+anyhow = "1"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }

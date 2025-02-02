@@ -1,11 +1,9 @@
-
 use std::ffi::c_void;
 
 use crate::transfer::{
     Completion, ControlIn, ControlOut, EndpointType, PlatformSubmit, PlatformTransfer,
     RequestBuffer, ResponseBuffer, TransferError, SETUP_PACKET_SIZE,
 };
-
 
 pub struct TransferData(());
 
@@ -62,5 +60,3 @@ impl PlatformSubmit<ControlOut<'_>> for TransferData {
         todo!();
     }
 }
-
-

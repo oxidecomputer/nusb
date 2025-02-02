@@ -1,10 +1,8 @@
-use crate::{
-    DeviceInfo, Error, Speed,
-};
+use crate::{DeviceInfo, Error, Speed};
 
+use rustix::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Duration;
-use rustix::fd::OwnedFd;
 
 use crate::descriptors::{validate_device_descriptor, Configuration, DeviceDescriptor};
 use crate::transfer::{Control, EndpointType, TransferError, TransferHandle};
@@ -134,4 +132,3 @@ impl Drop for IllumosInterface {
         todo!();
     }
 }
-

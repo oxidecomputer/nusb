@@ -1,10 +1,8 @@
+use crate::descriptors::{validate_device_descriptor, Configuration, DeviceDescriptor};
 use crate::{BusInfo, DeviceInfo, Error};
-use crate::descriptors::{
-    validate_device_descriptor,
-    Configuration,
-    DeviceDescriptor
-};
 use std::collections::HashMap;
+
+use anyhow::{anyhow, bail};
 
 #[derive(Debug)]
 enum PropVal {
@@ -20,10 +18,8 @@ struct Hub {
     port: u8,
 }
 
-pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
-    let mut di = devinfo::DevInfo::new()
-        .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
-
+fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
+    let mut di = devinfo::DevInfo::new()?;
     let mut bus = None;
     let mut hubs: Vec<Hub> = Vec::new();
 
@@ -33,9 +29,11 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
     while let Some(n) = w.next().transpose().unwrap() {
         let mut pw = n.props();
         let mut props = HashMap::new();
+        let path = n.devfs_path()?;
 
         while let Some(p) = pw.next().transpose().unwrap() {
-            props.insert(p.name(), 
+            props.insert(
+                p.name(),
                 if let Some(val) = p.as_i64() {
                     PropVal::Integer(val)
                 } else if let Some(val) = p.as_bytes() {
@@ -45,9 +43,9 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
                 } else {
                     match p.value_type() {
                         devinfo::PropType::Boolean => PropVal::Boolean,
-                        t => PropVal::Unknown(t)
+                        t => PropVal::Unknown(t),
                     }
-                }
+                },
             );
         }
 
@@ -63,7 +61,8 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
 
         let port = match props.get("reg") {
             Some(PropVal::Integer(port)) => *port as u8,
-            _ => continue
+            None => continue,
+            m => bail!("{path:?}: unexpected type for reg: {m:?}"),
         };
 
         let depth = n.depth();
@@ -82,31 +81,34 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
 
         if let Some(PropVal::Bytes(b)) = props.get("usb-dev-descriptor") {
             let device_address = match props.get("assigned-address") {
-                Some(PropVal::Integer(val)) => *val as u8,
-                _ => continue
+                Some(PropVal::Integer(v)) if *v < u8::MAX.into() => *v as u8,
+                v => bail!("{path:?}: bad assigned-address: {v:?}"),
             };
 
             let manufacturer_string = match props.get("usb-vendor-name") {
-                Some(PropVal::String(val)) => Some(val.clone()),
-                _ => None 
+                Some(PropVal::String(v)) => Some(v.clone()),
+                None => continue,
+                v => bail!("{path}: bad usb-vendor-name: {v:?}"),
             };
 
             let product_string = match props.get("usb-product-name") {
                 Some(PropVal::String(val)) => Some(val.clone()),
-                _ => None 
+                None => None,
+                v => bail!("{path}: bad usb-product-name: {v:?}"),
             };
 
             let serial_number = match props.get("usb-serialno") {
                 Some(PropVal::String(val)) => Some(val.clone()),
-                _ => None 
+                None => None,
+                v => bail!("{path}: bad usb-serialno: {v:?}"),
             };
 
-            let mut port_chain = hubs.iter().map(|h| h.port).collect::<Vec<_>>();
-            port_chain.push(port);
+            let mut ports = hubs.iter().map(|h| h.port).collect::<Vec<_>>();
+            ports.push(port);
 
             let busnum = match bus {
                 Some(bus) => bus,
-                None => panic!()
+                None => bail!("{path}: no root port?"),
             };
 
             if let Some(_) = validate_device_descriptor(b) {
@@ -115,7 +117,7 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
                 devices.push(DeviceInfo {
                     bus_id: format!("{busnum:03}"),
                     device_address,
-                    port_chain,
+                    port_chain: ports,
                     vendor_id: d.vendor_id(),
                     product_id: d.product_id(),
                     device_version: d.device_version(),
@@ -129,9 +131,19 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
                     serial_number,
                     interfaces: vec![],
                 });
+            } else {
+                bail!("{path}: invalid device descriptor");
             }
         }
     }
+
+    Ok(devices)
+}
+
+pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
+    #[rustfmt::skip]
+    let devices = walk_devices()
+        .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
 
     Ok(devices.into_iter())
 }

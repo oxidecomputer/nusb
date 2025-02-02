@@ -21,5 +21,3 @@ mod illumos_ugen;
 
 #[cfg(any(target_os = "illumos"))]
 pub use illumos_ugen::*;
-
-
