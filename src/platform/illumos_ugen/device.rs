@@ -4,11 +4,14 @@ use crate::{
 
 use std::sync::Arc;
 use std::time::Duration;
+use rustix::fd::OwnedFd;
 
 use crate::descriptors::{validate_device_descriptor, Configuration, DeviceDescriptor};
 use crate::transfer::{Control, EndpointType, TransferError, TransferHandle};
 
-pub(crate) struct IllumosDevice(());
+pub(crate) struct IllumosDevice {
+    fd: OwnedFd,
+}
 
 impl IllumosDevice {
     pub(crate) fn from_device_info(d: &DeviceInfo) -> Result<Arc<IllumosDevice>, Error> {
@@ -23,7 +26,7 @@ impl IllumosDevice {
     }
 
     pub(crate) fn configuration_descriptors(&self) -> impl Iterator<Item = &[u8]> {
-        todo!();
+        std::iter::empty()
     }
 
     pub(crate) fn active_configuration_value(&self) -> u8 {
