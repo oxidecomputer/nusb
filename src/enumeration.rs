@@ -4,6 +4,9 @@ use std::ffi::{OsStr, OsString};
 #[cfg(any(target_os = "linux", target_os = "android"))]
 use crate::platform::SysfsPath;
 
+#[cfg(target_os = "illumos")]
+use crate::platform::DevfsPath;
+
 use crate::{Device, Error};
 
 /// Opaque device identifier
@@ -24,6 +27,9 @@ pub struct DeviceId(pub(crate) crate::platform::DeviceId);
 pub struct DeviceInfo {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub(crate) path: SysfsPath,
+
+    #[cfg(target_os = "illumos")]
+    pub(crate) path: DevfsPath,
 
     #[cfg(any(target_os = "linux", target_os = "android"))]
     pub(crate) busnum: u8,
@@ -114,6 +120,12 @@ impl DeviceInfo {
     #[cfg(target_os = "linux")]
     pub fn sysfs_path(&self) -> &std::path::Path {
         &self.path.0
+    }
+
+    /// *(illumos-only)* devfs path for the device.
+    #[cfg(target_os = "illumos")]
+    pub fn devfs_path(&self) -> &String {
+        &self.path.path
     }
 
     /// *(Linux-only)* Bus number.
@@ -317,6 +329,10 @@ impl std::fmt::Debug for DeviceInfo {
         #[cfg(any(target_os = "linux", target_os = "android"))]
         {
             s.field("busnum", &self.busnum);
+        }
+        #[cfg(target_os = "illumos")]
+        {
+            s.field("devfs_path", &self.path);
         }
 
         #[cfg(target_os = "windows")]

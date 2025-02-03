@@ -3,6 +3,7 @@ use crate::descriptors::{
 };
 use crate::{BusInfo, DeviceInfo, Error, InterfaceInfo};
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{anyhow, bail};
 
@@ -20,6 +21,12 @@ struct Hub {
     port: u8,
 }
 
+#[derive(Clone, Debug)]
+pub struct DevfsPath {
+    pub path: String,
+    pub device_paths: HashMap<String, String>
+}
+
 fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
     let mut di = devinfo::DevInfo::new()?;
     let mut bus = None;
@@ -27,6 +34,8 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
 
     let mut w = di.walk_node();
     let mut devices = vec![];
+
+    let links = devinfo::DevLinks::new(false)?;
 
     while let Some(n) = w.next().transpose().unwrap() {
         let mut pw = n.props();
@@ -142,7 +151,30 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
                     v => bail!("{path}: bad usb-raw-cfg-descriptors: {v:?}"),
                 };
 
+                let mut paths: HashMap<String, String> = HashMap::new();
+
+                let mut wm = n.minors();
+                while let Some(m) = wm.next().transpose()? {
+                    let minor_path = m.devfs_path()?;
+
+                    for link in links.links_for_path(minor_path)? {
+                        let lpath = link.path();
+
+                        let file_name = match lpath.file_name() {
+                            Some(file_name) => file_name.to_str().unwrap(),
+                            None => bail!("{path}: bad link path {lpath:?}")
+                        };
+
+                        #[rustfmt::skip]
+                        paths.insert(
+                            file_name.to_string(),
+                            lpath.to_string_lossy().into_owned()
+                        );
+                    }
+                }
+
                 devices.push(DeviceInfo {
+                    path: DevfsPath { path, device_paths: paths },
                     bus_id: format!("{busnum:03}"),
                     device_address,
                     port_chain: ports,

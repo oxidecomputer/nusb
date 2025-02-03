@@ -3,7 +3,7 @@ use rustix::io::Errno;
 pub(crate) use transfer::TransferData;
 
 mod enumeration;
-pub use enumeration::{list_buses, list_devices};
+pub use enumeration::{list_buses, list_devices, DevfsPath};
 
 mod device;
 pub(crate) use device::IllumosDevice as Device;
