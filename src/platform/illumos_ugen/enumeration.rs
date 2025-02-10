@@ -24,7 +24,7 @@ struct Hub {
 #[derive(Clone, Debug)]
 pub struct DevfsPath {
     pub path: String,
-    pub device_paths: HashMap<String, String>
+    pub device_paths: HashMap<String, String>,
 }
 
 fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
@@ -138,6 +138,11 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
                             .map(|i| {
                                 let alt = i.first_alt_setting();
 
+                                //
+                                // If we want to pull the interface string,
+                                // we'll need to open the configuration
+                                // endpoint and pull the String descriptors.
+                                //
                                 InterfaceInfo {
                                     interface_number: i.interface_number(),
                                     class: alt.class(),
@@ -162,7 +167,7 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
 
                         let file_name = match lpath.file_name() {
                             Some(file_name) => file_name.to_str().unwrap(),
-                            None => bail!("{path}: bad link path {lpath:?}")
+                            None => bail!("{path}: bad link path {lpath:?}"),
                         };
 
                         #[rustfmt::skip]
@@ -174,7 +179,10 @@ fn walk_devices() -> Result<Vec<DeviceInfo>, anyhow::Error> {
                 }
 
                 devices.push(DeviceInfo {
-                    path: DevfsPath { path, device_paths: paths },
+                    path: DevfsPath {
+                        path,
+                        device_paths: paths,
+                    },
                     bus_id: format!("{busnum:03}"),
                     device_address,
                     port_chain: ports,
