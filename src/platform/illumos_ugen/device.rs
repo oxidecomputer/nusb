@@ -6,13 +6,20 @@ use rustix::io;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-
+use std::io::ErrorKind;
+use std::collections::HashMap;
 use log::warn;
 
-use crate::descriptors::{parse_concatenated_config_descriptors, Configuration, DeviceDescriptor};
+use crate::descriptors::{
+    parse_concatenated_config_descriptors, Configuration, DeviceDescriptor,
+    validate_config_descriptor,
+
+};
 use crate::transfer::{
     Control, ControlIn, ControlType, EndpointType, Recipient, TransferError, TransferHandle,
 };
+
+use super::DevfsPath;
 
 //
 // Useful USB constants. We use names that deliberately match those found in
@@ -28,6 +35,7 @@ pub(crate) struct IllumosDevice {
     device_descriptor: Vec<u8>,
     config_descriptors: Vec<u8>,
     active_config: u8,
+    paths: DevfsPath,
 }
 
 enum DescriptorType {
@@ -52,6 +60,11 @@ impl DescriptorType {
 
         high_byte << 8 | low_byte
     }
+}
+
+struct Endpoint {
+    transfer_type: EndpointType,
+    address: u8,
 }
 
 fn get_descriptor(fd: &OwnedFd, descriptor_type: DescriptorType) -> Result<Vec<u8>, Error> {
@@ -103,10 +116,10 @@ fn get_configuration(fd: &OwnedFd) -> Result<u8, Error> {
 impl IllumosDevice {
     pub(crate) fn from_device_info(d: &DeviceInfo) -> Result<Arc<IllumosDevice>, Error> {
         //
-        // We are going to open our control FD, and ask for descriptor information.
-        // (We expect this information to match that that's already in the devinfo
-        // tree as the `usb-raw-cfg-descriptors` property, but we don't cache
-        // that in `DeviceInfo`.)
+        // We are going to open our control FD, and ask for descriptor
+        // information.  (We expect this information to match that that's
+        // already in the devinfo tree as the `usb-raw-cfg-descriptors`
+        // property, but we don't cache that in `DeviceInfo`.)
         //
         let path = Path::new(d.path.device_paths.get("cntrl0").unwrap());
 
@@ -114,15 +127,56 @@ impl IllumosDevice {
             .inspect_err(|e| warn!("Failed to open device {path:?}: {e}"))?;
 
         let device_descriptor = get_descriptor(&fd, DescriptorType::Device)?;
-        let config_descriptors = get_descriptor(&fd, DescriptorType::Configuration { index: 0 })?;
-
         let active_config = get_configuration(&fd)?;
+
+        #[rustfmt::skip]
+        let config_descriptors = get_descriptor(
+            &fd, DescriptorType::Configuration { index: 0 }
+        )?;
+
+        let Some(_) = validate_config_descriptor(&config_descriptors) else {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "invalid device descriptor",
+            ));
+        };
+
+        let c = Configuration::new(&config_descriptors);
+
+        let ep = c.interfaces().map(|i| {
+             let alt = i.first_alt_setting();
+
+             (alt.interface_number(), alt.endpoints().map(|ep| 
+                Endpoint {
+                    address: ep.address(),
+                    direction: ep.direction(),
+                    transfer_type: ep.transfer_type(),
+                }
+                 (ep.address(), ep.direction())
+             ).collect::<Vec<_>>())
+        }).collect::<HashMap<_, _>>();
+
+        println!("{:?}", ep);
+
+        /*
+        for i in c.interfaces() {
+             let alt = i.first_alt_setting();
+
+    
+             println!("{:?}", alt);
+
+             for e in alt.endpoints() {
+                println!("{:?}", e);
+            }
+        }
+        */
 
         Ok(Arc::new(Self {
             fd,
             device_descriptor,
             config_descriptors,
             active_config,
+            paths: d.path.clone(),
         }))
     }
 
@@ -176,6 +230,8 @@ impl IllumosDevice {
         self: &Arc<Self>,
         interface_number: u8,
     ) -> Result<Arc<IllumosInterface>, Error> {
+
+
         todo!();
     }
 
