@@ -1,22 +1,22 @@
 use crate::{DeviceInfo, Error, Speed};
 
+use log::warn;
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use rustix::io;
+use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
-use std::io::ErrorKind;
-use std::collections::HashMap;
-use log::warn;
 
 use crate::descriptors::{
-    parse_concatenated_config_descriptors, Configuration, DeviceDescriptor,
-    validate_config_descriptor,
-
+    parse_concatenated_config_descriptors, validate_config_descriptor, Configuration,
+    DeviceDescriptor,
 };
 use crate::transfer::{
-    Control, ControlIn, ControlType, EndpointType, Recipient, TransferError, TransferHandle,
+    Control, ControlIn, ControlType, Direction, EndpointType, Recipient, TransferError,
+    TransferHandle,
 };
 
 use super::DevfsPath;
@@ -29,14 +29,7 @@ const USB_CFG_DESCR_SIZE: u16 = 9;
 
 const USB_REQ_GET_DESCR: u8 = 0x06;
 const USB_REQ_GET_CFG: u8 = 0x08;
-
-pub(crate) struct IllumosDevice {
-    fd: OwnedFd,
-    device_descriptor: Vec<u8>,
-    config_descriptors: Vec<u8>,
-    active_config: u8,
-    paths: DevfsPath,
-}
+const USB_EP_DIR_MASK: u8 = 0x80;
 
 enum DescriptorType {
     Device,
@@ -62,9 +55,44 @@ impl DescriptorType {
     }
 }
 
+#[derive(Debug)]
 struct Endpoint {
-    transfer_type: EndpointType,
+    interface_number: u8,
     address: u8,
+    transfer_type: EndpointType,
+    direction: Direction,
+}
+
+impl Endpoint {
+    fn device_basename(&self) -> String {
+        format!(
+            "if{}{}{}",
+            self.interface_number,
+            match self.direction {
+                Direction::In => "in",
+                Direction::Out => "out",
+            },
+            self.address & !USB_EP_DIR_MASK,
+        )
+    }
+
+    fn open_flags(&self) -> OFlags {
+        OFlags::CLOEXEC
+            | match self.direction {
+                Direction::In => OFlags::RDONLY,
+                Direction::Out => OFlags::WRONLY,
+            }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct IllumosDevice {
+    fd: OwnedFd,
+    device_descriptor: Vec<u8>,
+    config_descriptors: Vec<u8>,
+    active_config: u8,
+    paths: DevfsPath,
+    interfaces: HashMap<u8, Vec<Endpoint>>,
 }
 
 fn get_descriptor(fd: &OwnedFd, descriptor_type: DescriptorType) -> Result<Vec<u8>, Error> {
@@ -143,33 +171,25 @@ impl IllumosDevice {
 
         let c = Configuration::new(&config_descriptors);
 
-        let ep = c.interfaces().map(|i| {
-             let alt = i.first_alt_setting();
+        let interfaces = c
+            .interfaces()
+            .map(|i| {
+                let alt = i.first_alt_setting();
+                let interface_number = alt.interface_number();
 
-             (alt.interface_number(), alt.endpoints().map(|ep| 
-                Endpoint {
-                    address: ep.address(),
-                    direction: ep.direction(),
-                    transfer_type: ep.transfer_type(),
-                }
-                 (ep.address(), ep.direction())
-             ).collect::<Vec<_>>())
-        }).collect::<HashMap<_, _>>();
-
-        println!("{:?}", ep);
-
-        /*
-        for i in c.interfaces() {
-             let alt = i.first_alt_setting();
-
-    
-             println!("{:?}", alt);
-
-             for e in alt.endpoints() {
-                println!("{:?}", e);
-            }
-        }
-        */
+                (
+                    interface_number,
+                    alt.endpoints()
+                        .map(|ep| Endpoint {
+                            interface_number,
+                            address: ep.address(),
+                            direction: ep.direction(),
+                            transfer_type: ep.transfer_type(),
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
 
         Ok(Arc::new(Self {
             fd,
@@ -177,6 +197,7 @@ impl IllumosDevice {
             config_descriptors,
             active_config,
             paths: d.path.clone(),
+            interfaces: interfaces,
         }))
     }
 
@@ -230,9 +251,32 @@ impl IllumosDevice {
         self: &Arc<Self>,
         interface_number: u8,
     ) -> Result<Arc<IllumosInterface>, Error> {
+        let Some(eps) = self.interfaces.get(&interface_number) else {
+            return Err(Error::new(
+                ErrorKind::InvalidData,
+                "invalid interface number",
+            ));
+        };
 
+        let mut fds = HashMap::new();
 
-        todo!();
+        for ep in eps {
+            let devname = ep.device_basename();
+
+            let Some(path) = self.paths.device_paths.get(&devname) else {
+                return Err(Error::new(ErrorKind::InvalidData, "bad device"));
+            };
+
+            let fd = rustix::fs::open(path, ep.open_flags(), Mode::empty())?;
+
+            fds.insert(ep.address, Arc::new(fd));
+        }
+
+        Ok(Arc::new(IllumosInterface {
+            interface_number,
+            fds,
+            device: self.clone(),
+        }))
     }
 
     pub(crate) fn detach_and_claim_interface(
@@ -247,9 +291,11 @@ impl IllumosDevice {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct IllumosInterface {
     pub(crate) interface_number: u8,
     pub(crate) device: Arc<IllumosDevice>,
+    pub(crate) fds: HashMap<u8, Arc<OwnedFd>>,
 }
 
 impl IllumosInterface {
@@ -258,7 +304,12 @@ impl IllumosInterface {
         endpoint: u8,
         ep_type: EndpointType,
     ) -> TransferHandle<super::TransferData> {
-        todo!();
+        TransferHandle::new(super::TransferData::new(
+            self.device.clone(),
+            Some(self.clone()),
+            endpoint,
+            ep_type,
+        ))
     }
 
     pub fn control_in_blocking(
@@ -290,6 +341,9 @@ impl IllumosInterface {
 
 impl Drop for IllumosInterface {
     fn drop(&mut self) {
-        todo!();
+        //
+        // Nothing for the moment -- but this will need to unregister our
+        // FDs from our event port
+        //
     }
 }
