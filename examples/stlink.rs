@@ -66,14 +66,22 @@ fn main() {
     let mut cmd = vec![0u8; CMD_SIZE];
     cmd[0] = GET_VERSION_EXT;
 
-    block_on(interface.bulk_out(TX_EP, cmd))
-        .into_result()
-        .unwrap();
+    let out_result = block_on(interface.bulk_out(TX_EP, cmd)).into_result();
 
-    let result = block_on(interface.bulk_in(RX_EP, RequestBuffer::new(256)))
-        .into_result()
-        .unwrap();
+    if let Err(result) = out_result {
+        println!("write failed! {:?}", result);
+        return;
+    }
 
-    println!("Raw result: {result:x?}");
-    println!("Parsed: {:#x?}", VersionExtReply::from_bytes(&result));
+    let in_result = block_on(interface.bulk_in(RX_EP, RequestBuffer::new(256))).into_result();
+
+    println!("Raw write result: {out_result:x?}");
+
+    println!("Raw read result: {in_result:x?}");
+
+    if let Ok(result) = in_result {
+        println!("Parsed: {:#x?}", VersionExtReply::from_bytes(&result));
+    } else {
+        println!("operation failed: {:?}", in_result);
+    }
 }

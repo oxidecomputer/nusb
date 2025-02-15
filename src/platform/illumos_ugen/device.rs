@@ -269,6 +269,8 @@ impl IllumosDevice {
 
             let fd = rustix::fs::open(path, ep.open_flags(), Mode::empty())?;
 
+            println!("fd {:?} is {}", fd, path);
+
             fds.insert(ep.address, Arc::new(fd));
         }
 
