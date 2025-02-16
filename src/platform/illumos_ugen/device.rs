@@ -248,6 +248,7 @@ impl IllumosDevice {
         data: &[u8],
         timeout: Duration,
     ) -> Result<usize, TransferError> {
+        _ = control.request_type(Direction::In);
         todo!();
     }
 
