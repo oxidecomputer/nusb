@@ -5,17 +5,14 @@ use rustix::io::Errno;
 use std::ffi::c_void;
 use std::sync::Arc;
 
-use std::io::{ErrorKind, Seek};
-
-use crate::Error;
-
 use super::errno_to_transfer_error;
 
 use crate::transfer::{
     notify_completion, Completion, ControlIn, ControlOut, EndpointType, PlatformSubmit,
-    PlatformTransfer, RequestBuffer, ResponseBuffer, TransferError, SETUP_PACKET_SIZE,
+    PlatformTransfer, RequestBuffer, ResponseBuffer
 };
 
+#[allow(dead_code)]
 pub struct TransferData {
     interface: Arc<super::Interface>,
     endpoint: u8,
@@ -32,7 +29,7 @@ impl TransferData {
         device: Arc<super::Device>,
         interface: Option<Arc<super::Interface>>,
         endpoint: u8,
-        ep_type: EndpointType,
+        _ep_type: EndpointType,
     ) -> TransferData {
         let binding = interface.unwrap();
         let fd = binding.fds.get(&endpoint).unwrap().clone();
@@ -53,18 +50,12 @@ impl Drop for TransferData {
 }
 
 impl PlatformTransfer for TransferData {
-    fn cancel(&self) {
-        println!("cancelling endpoint {:x} (fd {:?})", self.endpoint, self.fd);
-    }
+    fn cancel(&self) {}
 }
 
 impl PlatformSubmit<Vec<u8>> for TransferData {
     unsafe fn submit(&mut self, data: Vec<u8>, user_data: *mut c_void) {
         self.status = Some(io::write(self.fd.as_ref().as_fd(), &data));
-        println!(
-            "wrote to endpoint {:x} (fd {:?}): {:?}",
-            self.endpoint, self.fd, self.status
-        );
         notify_completion::<super::TransferData>(user_data);
     }
 
@@ -85,16 +76,10 @@ impl PlatformSubmit<Vec<u8>> for TransferData {
 
 impl PlatformSubmit<RequestBuffer> for TransferData {
     unsafe fn submit(&mut self, data: RequestBuffer, user_data: *mut c_void) {
-        println!(
-            "reading from endpoint {:x} (fd {:?})",
-            self.endpoint, self.fd
-        );
-
-        let (mut data, len) = data.into_vec();
+        let (mut data, _len) = data.into_vec();
         data.resize(data.capacity(), 0);
 
         self.status = Some(io::read(self.fd.as_ref().as_fd(), &mut data));
-        println!("status is {:?}; data is {:x?}", self.status, data);
         self.data = Some(data);
 
         notify_completion::<super::TransferData>(user_data);
@@ -114,6 +99,7 @@ impl PlatformSubmit<RequestBuffer> for TransferData {
 }
 
 impl PlatformSubmit<ControlIn> for TransferData {
+    #[allow(unused)]
     unsafe fn submit(&mut self, data: ControlIn, user_data: *mut c_void) {
         todo!();
     }
@@ -124,6 +110,7 @@ impl PlatformSubmit<ControlIn> for TransferData {
 }
 
 impl PlatformSubmit<ControlOut<'_>> for TransferData {
+    #[allow(unused)]
     unsafe fn submit(&mut self, data: ControlOut, user_data: *mut c_void) {
         todo!();
     }

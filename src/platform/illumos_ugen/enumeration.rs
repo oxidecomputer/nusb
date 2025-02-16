@@ -3,10 +3,10 @@ use crate::descriptors::{
 };
 use crate::{BusInfo, DeviceInfo, Error, InterfaceInfo};
 use std::collections::HashMap;
-use std::path::Path;
 
 use anyhow::{anyhow, bail};
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum PropVal {
     String(String),
@@ -216,10 +216,8 @@ pub fn list_devices() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
     Ok(devices.into_iter())
 }
 
-pub fn list_root_hubs() -> Result<impl Iterator<Item = DeviceInfo>, Error> {
-    Ok(std::iter::empty())
-}
-
 pub fn list_buses() -> Result<impl Iterator<Item = BusInfo>, Error> {
+    todo!();
+    #[allow(unreachable_code)]
     Ok(std::iter::empty())
 }

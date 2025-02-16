@@ -8,6 +8,7 @@ impl IllumosHotplugWatch {
         todo!();
     }
 
+    #[allow(unused)]
     pub(crate) fn poll_next(&mut self, cx: &mut std::task::Context<'_>) -> Poll<HotplugEvent> {
         todo!();
     }

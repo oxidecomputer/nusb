@@ -34,6 +34,7 @@ const USB_EP_DIR_MASK: u8 = 0x80;
 enum DescriptorType {
     Device,
     Configuration { index: u8 },
+    #[allow(dead_code)]
     String { index: u8 },
 }
 
@@ -59,6 +60,7 @@ impl DescriptorType {
 struct Endpoint {
     interface_number: u8,
     address: u8,
+    #[allow(dead_code)]
     transfer_type: EndpointType,
     direction: Direction,
 }
@@ -87,6 +89,7 @@ impl Endpoint {
 
 #[derive(Debug)]
 pub(crate) struct IllumosDevice {
+    #[allow(dead_code)]
     fd: OwnedFd,
     device_descriptor: Vec<u8>,
     config_descriptors: Vec<u8>,
@@ -96,6 +99,7 @@ pub(crate) struct IllumosDevice {
 }
 
 fn get_descriptor(fd: &OwnedFd, descriptor_type: DescriptorType) -> Result<Vec<u8>, Error> {
+    #[allow(non_snake_case)]
     let wValue: u16 = descriptor_type.to_value();
 
     let mut control = ControlIn {
@@ -118,13 +122,13 @@ fn get_descriptor(fd: &OwnedFd, descriptor_type: DescriptorType) -> Result<Vec<u
     io::write(fd, control.setup_packet().as_slice())?;
 
     let mut descriptors = vec![0u8; total as usize];
-    let result = io::read(fd, &mut descriptors);
+    io::read(fd, &mut descriptors)?;
 
     Ok(descriptors)
 }
 
 fn get_configuration(fd: &OwnedFd) -> Result<u8, Error> {
-    let mut control = ControlIn {
+    let control = ControlIn {
         control_type: ControlType::Standard,
         recipient: Recipient::Device,
         request: USB_REQ_GET_CFG,
@@ -201,6 +205,7 @@ impl IllumosDevice {
         }))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn handle_events(&self) {
         todo!();
     }
@@ -217,6 +222,7 @@ impl IllumosDevice {
         self.active_config
     }
 
+    #[allow(unused)]
     pub(crate) fn set_configuration(&self, configuration: u8) -> Result<(), Error> {
         todo!();
     }
@@ -225,6 +231,7 @@ impl IllumosDevice {
         todo!();
     }
 
+    #[allow(unused)]
     pub fn control_in_blocking(
         &self,
         control: Control,
@@ -234,16 +241,13 @@ impl IllumosDevice {
         todo!();
     }
 
+    #[allow(unused)]
     pub fn control_out_blocking(
         &self,
         control: Control,
         data: &[u8],
         timeout: Duration,
     ) -> Result<usize, TransferError> {
-        todo!();
-    }
-
-    pub(crate) fn make_control_transfer(self: &Arc<Self>) -> TransferHandle<super::TransferData> {
         todo!();
     }
 
@@ -281,6 +285,7 @@ impl IllumosDevice {
         }))
     }
 
+    #[allow(unused)]
     pub(crate) fn detach_and_claim_interface(
         self: &Arc<Self>,
         interface_number: u8,
@@ -314,6 +319,7 @@ impl IllumosInterface {
         ))
     }
 
+    #[allow(unused)]
     pub fn control_in_blocking(
         &self,
         control: Control,
@@ -323,6 +329,7 @@ impl IllumosInterface {
         todo!();
     }
 
+    #[allow(unused)]
     pub fn control_out_blocking(
         &self,
         control: Control,
@@ -332,10 +339,12 @@ impl IllumosInterface {
         todo!();
     }
 
+    #[allow(unused)]
     pub fn set_alt_setting(&self, alt_setting: u8) -> Result<(), Error> {
         todo!();
     }
 
+    #[allow(unused)]
     pub fn clear_halt(&self, endpoint: u8) -> Result<(), Error> {
         todo!();
     }
