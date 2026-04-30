@@ -43,7 +43,6 @@ enum DescriptorType {
     Configuration {
         index: u8,
     },
-    #[allow(dead_code)]
     String {
         index: u8,
     },
