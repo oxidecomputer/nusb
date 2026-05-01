@@ -32,12 +32,13 @@ use std::time::Duration;
 // Useful USB constants. We use names that deliberately match those found in
 // the header files found under usr/src/uts/common/sys/usb.
 //
-const USB_CFG_DESCR_SIZE: u16 = 9;
 
 const USB_REQ_GET_DESCR: u8 = 0x06;
 const USB_REQ_GET_CFG: u8 = 0x08;
 const USB_EP_DIR_MASK: u8 = 0x80;
 
+// These come from the USB spec, there are others but these
+// are the ones necessary at the moment
 enum DescriptorType {
     Device,
     Configuration { index: u8 },
@@ -230,26 +231,50 @@ pub(crate) struct IllumosDevice {
 // This is needed for full enumeration because the strings are needed
 // for probe-rs to work
 pub(crate) fn get_raw_string(fd: &OwnedFd, index: u8) -> Result<Vec<u8>, Error> {
-    let mut result = get_raw(
-        fd,
-        DescriptorType::String { index },
-        crate::descriptors::language_id::US_ENGLISH,
-    )?;
+    let descriptor_type = DescriptorType::String { index };
+
+    let index = crate::descriptors::language_id::US_ENGLISH;
+
+    let mut control = ControlIn {
+        control_type: ControlType::Standard,
+        recipient: Recipient::Device,
+        request: USB_REQ_GET_DESCR,
+        value: descriptor_type.to_value(),
+        index,
+        length: 4096,
+    };
+
+    let packet = control.setup_packet();
+    let setup_packet = packet.as_slice();
+
+    let cnt = io::write(fd, setup_packet)
+        .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
+
+    if cnt != setup_packet.len() {
+        println!("fuck5");
+        return Err(Error::new(ErrorKind::Other, "incomplete write"));
+    }
+
+    // We don't actually know the max length but this is a reasonable estimate that
+    // other parts of nusb use
+    let mut buf = vec![0u8; 4096];
+    let cnt =
+        io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
 
     // This was a very sad string descriptor
-    if result.is_empty() {
+    if cnt == 0 {
         return Err(Error::new(ErrorKind::Other, "empty string descriptor"));
     }
 
-    result.truncate(result[0].into());
-    Ok(result)
+    buf.truncate(buf[0].into());
+    Ok(buf)
 }
 
-fn get_descriptor(fd: &OwnedFd, descriptor_type: DescriptorType) -> Result<Vec<u8>, Error> {
-    get_raw(fd, descriptor_type, 0)
-}
-
-fn get_raw(fd: &OwnedFd, descriptor_type: DescriptorType, index: u16) -> Result<Vec<u8>, Error> {
+fn get_dev_descriptor(
+    fd: &OwnedFd,
+    descriptor_type: DescriptorType,
+    index: u16,
+) -> Result<Vec<u8>, Error> {
     #[allow(non_snake_case)]
     let wValue: u16 = descriptor_type.to_value();
 
@@ -259,29 +284,84 @@ fn get_raw(fd: &OwnedFd, descriptor_type: DescriptorType, index: u16) -> Result<
         request: USB_REQ_GET_DESCR,
         value: wValue,
         index,
-        length: USB_CFG_DESCR_SIZE,
+        length: crate::descriptors::DESCRIPTOR_LEN_DEVICE as u16,
     };
 
-    io::write(fd, control.setup_packet().as_slice())
+    let packet = control.setup_packet();
+    let setup_packet = packet.as_slice();
+
+    let cnt = io::write(fd, setup_packet)
         .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
 
-    let mut buf = [0u8; USB_CFG_DESCR_SIZE as usize];
-    io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    if cnt != setup_packet.len() {
+        return Err(Error::new(ErrorKind::Other, "incomplete write"));
+    }
 
-    let total = u16::from_le_bytes(
-        buf[2..4]
-            .try_into()
-            .map_err(|_| Error::new(ErrorKind::Other, "total descriptor length out of bounds"))?,
-    );
+    let mut buf = vec![0u8; crate::descriptors::DESCRIPTOR_LEN_DEVICE as usize];
+    let cnt =
+        io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    if cnt != crate::descriptors::DESCRIPTOR_LEN_DEVICE as usize {
+        return Err(Error::new(ErrorKind::Other, "short descriptor read"));
+    }
+
+    Ok(buf)
+}
+
+fn get_cfg_descriptors(
+    fd: &OwnedFd,
+    descriptor_type: DescriptorType,
+    index: u16,
+) -> Result<Vec<u8>, Error> {
+    #[allow(non_snake_case)]
+    let wValue: u16 = descriptor_type.to_value();
+
+    let mut control = ControlIn {
+        control_type: ControlType::Standard,
+        recipient: Recipient::Device,
+        request: USB_REQ_GET_DESCR,
+        value: wValue,
+        index,
+        length: crate::descriptors::DESCRIPTOR_LEN_CONFIGURATION as u16,
+    };
+
+    let packet = control.setup_packet();
+    let setup_packet = packet.as_slice();
+
+    let cnt = io::write(fd, setup_packet)
+        .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
+
+    if cnt != setup_packet.len() {
+        return Err(Error::new(ErrorKind::Other, "incomplete write"));
+    }
+
+    let mut buf = vec![0u8; crate::descriptors::DESCRIPTOR_LEN_CONFIGURATION as usize];
+    let cnt =
+        io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    if cnt != crate::descriptors::DESCRIPTOR_LEN_CONFIGURATION as usize {
+        return Err(Error::new(ErrorKind::Other, "short descriptor read"));
+    }
+
+    let total = u16::from_le_bytes([buf[2], buf[3]]);
+
+    // An empty descriptor will never be valid and will probably just error out
+    if total == 0 {
+        return Err(Error::new(ErrorKind::Other, "Empty descriptor"));
+    }
+
     control.length = total;
     control.index = index;
 
-    io::write(fd, control.setup_packet().as_slice())
+    let cnt = io::write(fd, setup_packet)
         .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
+
+    if cnt != setup_packet.len() {
+        return Err(Error::new(ErrorKind::Other, "short descriptor write"));
+    }
 
     let mut descriptors = vec![0u8; total as usize];
     io::read(fd, &mut descriptors)
         .map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    // We intentionally don't check that we don't read the full total
 
     Ok(descriptors)
 }
@@ -298,9 +378,20 @@ fn get_configuration(fd: &OwnedFd) -> Result<u8, Error> {
 
     let mut buf = [0u8];
 
-    io::write(fd, control.setup_packet().as_slice())
-        .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
-    io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    let packet = control.setup_packet();
+    let slice = packet.as_slice();
+
+    let cnt =
+        io::write(fd, slice).map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
+    if cnt != slice.len() {
+        return Err(Error::new(ErrorKind::Other, "short descriptor write"));
+    }
+
+    let cnt =
+        io::read(fd, &mut buf).map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
+    if cnt != buf.len() {
+        return Err(Error::new(ErrorKind::Other, "short descriptor len"));
+    }
 
     Ok(buf[0])
 }
@@ -362,13 +453,13 @@ impl IllumosDevice {
                     })?;
 
             let device_descriptor =
-                DeviceDescriptor::new(&get_descriptor(&fd, DescriptorType::Device)?)
+                DeviceDescriptor::new(&get_dev_descriptor(&fd, DescriptorType::Device, 0)?)
                     .ok_or(Error::new(ErrorKind::Other, "Invalid device descriptor"))?;
             let active_config = get_configuration(&fd)?;
 
             #[rustfmt::skip]
-            let config_descriptors = get_descriptor(
-                &fd, DescriptorType::Configuration { index: 0 },
+            let config_descriptors = get_cfg_descriptors(
+                &fd, DescriptorType::Configuration { index: 0 }, 0
             )?;
 
             let c = ConfigurationDescriptor::new(&config_descriptors)
