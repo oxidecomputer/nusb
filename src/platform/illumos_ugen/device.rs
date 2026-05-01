@@ -452,18 +452,16 @@ impl IllumosDevice {
                 .map(|i| {
                     let alt = i.first_alt_setting();
                     let interface_number = alt.interface_number();
-
-                    (
-                        interface_number,
-                        alt.endpoints()
-                            .map(|ep| RawEndpoint {
-                                interface_number,
-                                address: ep.address(),
-                                direction: ep.direction(),
-                                transfer_type: ep.transfer_type(),
-                            })
-                            .collect::<Vec<_>>(),
-                    )
+                    let alt_endpoints = alt
+                        .endpoints()
+                        .map(|ep| RawEndpoint {
+                            interface_number,
+                            address: ep.address(),
+                            direction: ep.direction(),
+                            transfer_type: ep.transfer_type(),
+                        })
+                        .collect::<Vec<_>>();
+                    (interface_number, alt_endpoints)
                 })
                 .collect::<HashMap<_, _>>();
 
