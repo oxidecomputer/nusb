@@ -32,7 +32,7 @@ pub struct DevfsPath {
 
 fn build_prop_tree(mut pw: devinfo::PropertyWalk) -> HashMap<String, PropVal> {
     let mut props = HashMap::new();
-    while let Some(p) = pw.next().transpose().unwrap() {
+    while let Some(Ok(p)) = pw.next() {
         props.insert(
             p.name(),
             if let Some(val) = p.as_i64() {
@@ -61,7 +61,7 @@ fn walk_buses() -> Result<impl Iterator<Item = BusInfo>, Error> {
     let mut w = di.walk_node();
     let mut buses = vec![];
 
-    while let Some(n) = w.next().transpose().unwrap() {
+    while let Some(Ok(n)) = w.next() {
         let pw = n.props();
 
         let props = build_prop_tree(pw);
