@@ -40,12 +40,8 @@ const USB_EP_DIR_MASK: u8 = 0x80;
 
 enum DescriptorType {
     Device,
-    Configuration {
-        index: u8,
-    },
-    String {
-        index: u8,
-    },
+    Configuration { index: u8 },
+    String { index: u8 },
 }
 
 impl DescriptorType {

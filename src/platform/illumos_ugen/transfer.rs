@@ -220,13 +220,8 @@ impl BlockingTransferData {
                     return status;
                 }
                 let dil = *data_in_len as usize;
-                handle_errno_result(
-                    io::read(
-                        fd,
-                        &mut buffer[SETUP_PACKET_SIZE..(SETUP_PACKET_SIZE + dil)],
-                    ),
-                    stat_fd,
-                )
+                let ptr = buffer.extend_fill(dil, 0);
+                handle_errno_result(io::read(fd, ptr), stat_fd)
             }
         }
     }
