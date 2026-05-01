@@ -4,6 +4,7 @@ use rustix::io::Errno;
 use std::num::NonZeroU32;
 pub(crate) use transfer::TransferData;
 mod enumeration;
+use crate::error::Error;
 pub use enumeration::{list_buses, list_devices, DevfsPath};
 
 mod device;
@@ -102,12 +103,23 @@ pub fn format_os_error_code(f: &mut std::fmt::Formatter<'_>, code: u32) -> std::
     write!(f, "errno {}", code)
 }
 
-impl crate::error::Error {
+impl Error {
     pub(crate) fn new_os(kind: ErrorKind, message: &'static str, code: Errno) -> Self {
         Self {
             kind,
             code: NonZeroU32::new(code.raw_os_error() as u32),
             message,
         }
+    }
+}
+
+impl From<Errno> for Error {
+    fn from(e: Errno) -> Self {
+        match e {
+            Errno::NOENT => Error::new_os(ErrorKind::Disconnected, "device not found", e),
+            Errno::PERM => Error::new_os(ErrorKind::PermissionDenied, "permission denied", e),
+            e => Error::new_os(ErrorKind::Other, "failed to open device", e),
+        }
+        .log_debug()
     }
 }

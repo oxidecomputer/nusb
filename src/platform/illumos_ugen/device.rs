@@ -235,7 +235,7 @@ pub(crate) fn get_raw_string(fd: &OwnedFd, index: u8) -> Result<Vec<u8>, Error> 
 
     let index = crate::descriptors::language_id::US_ENGLISH;
 
-    let mut control = ControlIn {
+    let control = ControlIn {
         control_type: ControlType::Standard,
         recipient: Recipient::Device,
         request: USB_REQ_GET_DESCR,
@@ -278,7 +278,7 @@ fn get_dev_descriptor(
     #[allow(non_snake_case)]
     let wValue: u16 = descriptor_type.to_value();
 
-    let mut control = ControlIn {
+    let control = ControlIn {
         control_type: ControlType::Standard,
         recipient: Recipient::Device,
         request: USB_REQ_GET_DESCR,
@@ -350,6 +350,8 @@ fn get_cfg_descriptors(
 
     control.length = total;
     control.index = index;
+    let packet = control.setup_packet();
+    let setup_packet = packet.as_slice();
 
     let cnt = io::write(fd, setup_packet)
         .map_err(|e| Error::new_os(ErrorKind::Other, "failed to write", e))?;
@@ -359,9 +361,11 @@ fn get_cfg_descriptors(
     }
 
     let mut descriptors = vec![0u8; total as usize];
-    io::read(fd, &mut descriptors)
+    let cnt = io::read(fd, &mut descriptors)
         .map_err(|e| Error::new_os(ErrorKind::Other, "failed to read", e))?;
-    // We intentionally don't check that we don't read the full total
+    if cnt != total as usize {
+        return Err(Error::new(ErrorKind::Other, "short descriptor write"));
+    }
 
     Ok(descriptors)
 }
@@ -417,18 +421,7 @@ impl IllumosDevice {
             );
 
             let fd = rustix::fs::open(path, OFlags::RDWR | OFlags::CLOEXEC, Mode::empty())
-                .map_err(|e| {
-                    match e {
-                        Errno::NOENT => {
-                            Error::new_os(ErrorKind::Disconnected, "device not found", e)
-                        }
-                        Errno::PERM => {
-                            Error::new_os(ErrorKind::PermissionDenied, "permission denied", e)
-                        }
-                        e => Error::new_os(ErrorKind::Other, "failed to open device", e),
-                    }
-                    .log_debug()
-                })?;
+                .map_err(Error::from)?;
 
             let stat_path = Path::new(
                 dpath
@@ -439,18 +432,7 @@ impl IllumosDevice {
 
             let stat_fd =
                 rustix::fs::open(stat_path, OFlags::RDWR | OFlags::CLOEXEC, Mode::empty())
-                    .map_err(|e| {
-                        match e {
-                            Errno::NOENT => {
-                                Error::new_os(ErrorKind::Disconnected, "device not found", e)
-                            }
-                            Errno::PERM => {
-                                Error::new_os(ErrorKind::PermissionDenied, "permission denied", e)
-                            }
-                            e => Error::new_os(ErrorKind::Other, "failed to open device", e),
-                        }
-                        .log_debug()
-                    })?;
+                    .map_err(Error::from)?;
 
             let device_descriptor =
                 DeviceDescriptor::new(&get_dev_descriptor(&fd, DescriptorType::Device, 0)?)
