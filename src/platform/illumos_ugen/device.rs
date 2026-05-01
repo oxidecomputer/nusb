@@ -66,9 +66,10 @@ impl DescriptorType {
 pub(crate) struct IllumosEndpoint {
     inner: Arc<EndpointInner>,
 
+    // Max packet size per the descriptor
     pub(crate) max_packet_size: usize,
 
-    /// A queue of pending transfers, expected to complete in order
+    // A queue of pending transfers, expected to complete in order
     pending: VecDeque<Pending<super::TransferData>>,
 }
 
