@@ -10,6 +10,7 @@ use rustix::fd::{BorrowedFd, OwnedFd};
 use rustix::io;
 use rustix::io::Errno;
 use std::cell::UnsafeCell;
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 // We have two possible cases for transfer errors: the raw read/write
@@ -28,6 +29,25 @@ impl UsbResult {
             UsbResult::Errno(e) => errno_to_transfer_error(e),
             UsbResult::UgenStat(e) => ugen_to_transfer_error(e),
             UsbResult::Cancelled => TransferError::Cancelled,
+        }
+    }
+
+    pub(crate) fn to_crate_error(self) -> crate::error::Error {
+        match self {
+            UsbResult::Errno(e) => crate::error::Error::from(e),
+            // Mapping Ugen errors onto more specific kinds is not very useful,
+            // just stash the code and move on...
+            UsbResult::UgenStat(e) => crate::error::Error {
+                kind: crate::error::ErrorKind::Other,
+                message: "error from ugen",
+                // If ugen is returning us 0 in this path we're having
+                // a bad time
+                code: NonZeroU32::new(e),
+            },
+            UsbResult::Cancelled => crate::error::Error::new(
+                crate::error::ErrorKind::Other,
+                "USB transfer was cancelled",
+            ),
         }
     }
 }

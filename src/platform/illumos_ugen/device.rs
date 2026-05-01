@@ -141,12 +141,26 @@ impl IllumosEndpoint {
     }
 
     pub(crate) fn clear_halt(&self) -> impl MaybeFuture<Output = Result<(), Error>> {
+        // Just send a raw command based on the USB 3.0 spec table 9-5
+        const CLEAR_FEATURE: u8 = 0x1;
+
+        let data = ControlOut {
+            control_type: ControlType::Standard,
+            recipient: Recipient::Endpoint,
+            request: CLEAR_FEATURE,
+            value: 0x0,
+            index: self.inner.raw.address as u16,
+            data: &[],
+        };
+
         let inner = self.inner.clone();
-        Blocking::new(move || {
-            let endpoint = inner.raw.address;
-            debug!("Clear halt, endpoint {endpoint:02x}");
-            todo!("Check how this works");
-        })
+        let mut t = BlockingTransferData::new_control_out(data);
+        Blocking::new(
+            move || match t.blocking_transfer(&inner.fd, &inner.stat_fd) {
+                Ok(_n) => Ok(()),
+                Err(e) => Err(e.to_crate_error()),
+            },
+        )
     }
 }
 
