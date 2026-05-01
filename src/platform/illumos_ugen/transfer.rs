@@ -10,7 +10,6 @@ use rustix::fd::{BorrowedFd, OwnedFd};
 use rustix::io;
 use rustix::io::Errno;
 use std::cell::UnsafeCell;
-use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 // We have two possible cases for transfer errors: the raw read/write

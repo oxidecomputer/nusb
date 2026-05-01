@@ -16,15 +16,15 @@ use crate::transfer::{
 };
 use crate::ErrorKind;
 use log::debug;
-use rustix::fd::AsRawFd;
-use rustix::fd::OwnedFd;
-use rustix::fs::{Mode, OFlags};
-use rustix::io;
+use rustix::{
+    fd::{AsRawFd, OwnedFd},
+    fs::{Mode, OFlags},
+    io,
+};
 use std::collections::{HashMap, VecDeque};
 use std::num::NonZero;
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
