@@ -573,18 +573,8 @@ impl IllumosDevice {
                     return Err(Error::new(ErrorKind::Other, "bad device").log_error());
                 };
 
-                let fd = rustix::fs::open(path, ep.open_flags(), Mode::empty()).map_err(|e| {
-                    let e: Option<u32> = e.raw_os_error().try_into().ok();
-                    let code: Option<NonZero<u32>> = match e {
-                        None => None,
-                        Some(v) => v.try_into().ok(),
-                    };
-                    Error {
-                        kind: ErrorKind::Other,
-                        message: "opening device fd failed",
-                        code,
-                    }
-                })?;
+                let fd =
+                    rustix::fs::open(path, ep.open_flags(), Mode::empty()).map_err(Error::from)?;
 
                 let statname = ep.stat_basename();
                 let Some(path) = self.paths.device_paths.get(&statname) else {
@@ -592,19 +582,7 @@ impl IllumosDevice {
                 };
 
                 let stat_fd =
-                    rustix::fs::open(path, ep.open_flags(), Mode::empty()).map_err(|e| {
-                        let e: Option<u32> = e.raw_os_error().try_into().ok();
-                        let code: Option<NonZero<u32>> = match e {
-                            None => None,
-                            Some(v) => v.try_into().ok(),
-                        };
-
-                        Error {
-                            kind: ErrorKind::Other,
-                            message: "opening device stat fd failed",
-                            code,
-                        }
-                    })?;
+                    rustix::fs::open(path, ep.open_flags(), Mode::empty()).map_err(Error::from)?;
 
                 fds.insert(
                     ep.address,
