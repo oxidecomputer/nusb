@@ -158,15 +158,14 @@ impl IllumosEndpoint {
 
 impl Drop for IllumosEndpoint {
     fn drop(&mut self) {
-        if self.pending.is_empty() {
-            return;
+        if !self.pending.is_empty() {
+            debug!(
+                "Dropping endpoint {:02x} with {} pending transfers",
+                self.inner.raw.address,
+                self.pending.len()
+            );
+            self.cancel_all();
         }
-        debug!(
-            "Dropping endpoint {:02x} with {} pending transfers",
-            self.inner.raw.address,
-            self.pending.len()
-        );
-        self.cancel_all();
     }
 }
 
