@@ -47,19 +47,11 @@ enum DescriptorType {
 
 impl DescriptorType {
     fn to_value(&self) -> u16 {
-        let high_byte = match self {
-            DescriptorType::Device => 1,
-            DescriptorType::Configuration { .. } => 2,
-            DescriptorType::String { .. } => 3,
-        } as u16;
-
-        let low_byte = match self {
-            DescriptorType::Device => 0,
-            DescriptorType::Configuration { index } => *index,
-            DescriptorType::String { index } => *index,
-        } as u16;
-
-        high_byte << 8 | low_byte
+        match self {
+            Self::Device => 1 << 8,
+            Self::Configuration { index } => 2 << 8 | u16::from(*index),
+            Self::String { index } => 3 << 8 | u16::from(*index),
+        }
     }
 }
 
