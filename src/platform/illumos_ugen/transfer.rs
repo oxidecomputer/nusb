@@ -467,22 +467,13 @@ impl Pending<TransferData> {
                 log::trace!("Successfully cancelled transfer");
             }
             libc::AIO_ALLDONE => {
-                // Okay, this is not great. Our atomic pointer WASN'T Null, but ALSO the
-                // callback wasn't marked as cancelled. Do one quick check JUST IN CASE
-                // there was a race between `aiocb.load` and `aio_cancel`. If the pointer
-                // is NOW null, we just observed a little race, and we can avoid any further
-                // remediation
-                let aiocb_ptr2 = alias.aiocb.load(Ordering::Acquire);
-                if aiocb_ptr2.is_null() {
-                    // Whew. Just a little race. The callback already handled cleanup.
-                    return;
-                }
-
-                // Now we are in the Cool Zone. The transfer is ALLDONE according to the
-                // operating system, but the callback DIDN'T clear the aiocb buffer.
-                // Something has gone seriously wrong, and let's not continue out of
-                // an abundance of caution
-                panic!("Indeterminate outcome reached on cancelling a transfer. This is a program error.");
+                // The request completed before we asked to cancel it. libc
+                // removes a request from the hash `aio_cancel()` consults in
+                // `_aiodone()`, then queues the notification separately, so
+                // ALLDONE means the transfer finished, not that our callback
+                // has run. The callback is still to come and does the cleanup,
+                // as in the cancelled case above.
+                log::trace!("Transfer completed before cancellation took effect");
             }
             libc::AIO_NOTCANCELED => {
                 // According to the man page: "At least one of the requests specified was not canceled
